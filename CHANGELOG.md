@@ -7,6 +7,35 @@ minor versions can still change behaviour.
 
 ## [Unreleased]
 
+### Added (fork: painel web em PT-BR, nuvem)
+
+- **Administração 100% pelo navegador** (`harvey/webadmin.py`, `harvey/web/app-admin.js`):
+  aba **IA** (token de `claude setup-token` colado na tela, teste real, cota da
+  assinatura, escolha Claude/Codex), aba **E-mail** (OAuth do Gmail e do Microsoft 365
+  iniciado e concluído pelo navegador em `/api/gmail/callback` e
+  `/api/microsoft/callback`, troca de provedor, teste de conexão), aba
+  **Configurações** (todo o `harvey.yaml` como formulário validado pelos modelos
+  pydantic, gravado em `harvey.local.yaml`, incluindo `usage.max_daily_claude_percent`),
+  aba **Treinar** (`harvey train` com log ao vivo), aba **Aparência** (nome, frase,
+  logo, cor de destaque, tema padrão), aba **Chaves** (DataForSEO, Serper, Precleared,
+  Microsoft, acesso).
+- **Guard do Cloudflare Access**: com `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` e
+  `CF_ACCESS_ALLOWED_EMAILS` no `.env`, toda requisição exige um JWT válido do Access
+  e um e-mail da lista; `/api/me` mostra quem entrou.
+- **Deploy em VM** (`deploy/`): `install.sh` para Ubuntu (Oracle Always Free), unidades
+  systemd `harvey-dashboard` e `harvey-agent`, cloudflared; guia completo em
+  `docs/deploy-oracle.md`. Com `HARVEY_AGENT_UNIT` definido, o painel liga/desliga o
+  agente via `systemctl`.
+- O leitor de cota aceita `CLAUDE_CODE_OAUTH_TOKEN`; `harvey/main.py` grava o próprio
+  PID (o painel reconhece um agente iniciado pelo systemd) e sai limpo, em vez de abrir
+  o assistente interativo, quando roda sem terminal e sem configuração.
+
+### Changed (fork)
+
+- Painel traduzido para PT-BR (`index.html`, `app.js`, textos da fila "Hoje" e do
+  checklist de configuração); checklist ganha o item "IA conectada".
+- Nova dependência: `PyJWT[crypto]`.
+
 ### Added
 
 - **Microsoft 365 mail provider.** Set `channels.email.provider: microsoft` to

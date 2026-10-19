@@ -10,6 +10,7 @@ counting. Responses are cached in-memory to stay polite.
 import asyncio
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -53,6 +54,13 @@ def get_oauth_token() -> Optional[str]:
     Tries the credentials file (Linux / CLAUDE_CONFIG_DIR overrides),
     then the macOS keychain. Returns None when not logged in.
     """
+    # A long-lived token from `claude setup-token` (the headless/VM path):
+    # the CLI itself reads this variable, so the quota gauge must too, or
+    # the dashboard says "not logged in" while calls are in fact working.
+    env_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+    if env_token:
+        return env_token
+
     creds_file = claude_config_dir() / ".credentials.json"
     try:
         if creds_file.is_file():

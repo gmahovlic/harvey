@@ -1,0 +1,20 @@
+# Ciclo do Harvey (acorda a cada N minutos, prospecta, escreve, envia, lê respostas)
+[Unit]
+Description=Harvey agent (heartbeat loop)
+After=network-online.target harvey-dashboard.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__HOME__/harvey
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=__HOME__/harvey/.venv/bin/python -m harvey
+# on-failure, não always: "Parar Harvey" no painel manda SIGTERM e ele sai limpo (código 0).
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

@@ -170,15 +170,14 @@ header {
 /* ── Nav ─────────────────────────────────────────────────────── */
 
 nav {
-  display: flex; gap: 0; padding: 0 var(--gut);
+  display: flex; flex-wrap: wrap; gap: 0; padding: 0 var(--gut);
   border-bottom: 1px solid var(--border);
-  overflow-x: auto; scrollbar-width: none;
 }
 nav::-webkit-scrollbar { display: none; }
 nav button {
   background: none; border: none; border-bottom: 1.5px solid transparent;
   color: var(--text-3); font-family: var(--sans); font-size: 13px; font-weight: 450;
-  padding: 10px 0 9px; margin-right: 24px; cursor: pointer; white-space: nowrap;
+  padding: 10px 0 9px; margin-right: 19px; cursor: pointer; white-space: nowrap;
   transition: color .15s;
 }
 nav button:hover { color: var(--text-2); }
@@ -583,3 +582,97 @@ details[open] summary::before { content: '– '; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Administration from the browser (app-admin.js) + branding
+   ══════════════════════════════════════════════════════════════ */
+
+/* Accent: the one colour the operator may choose. Defaults to ink, so a
+   fresh install looks exactly like the original design. */
+:root { --accent: var(--ink); --accent-contrast: var(--ink-contrast); }
+.brand .mark { background: var(--accent); color: var(--accent-contrast); }
+.brand .logo { height: 28px; max-width: 120px; width: auto; object-fit: contain; flex: none; border-radius: var(--r-sm); }
+nav button.active { border-bottom-color: var(--accent); }
+.btn-primary { background: var(--accent); color: var(--accent-contrast); }
+.toast.success { background: var(--accent); color: var(--accent-contrast); }
+:focus-visible { outline-color: var(--accent); }
+.desk-item.active { border-left-color: var(--accent); }
+.cohort-pick input, input[type='checkbox'], input[type='range'] { accent-color: var(--accent); }
+
+.nav-sep { width: 1px; height: 16px; background: var(--border-strong); margin: 0 24px 0 0; align-self: center; flex: none; }
+
+.user-chip {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; color: var(--text-3);
+  padding: 0 6px; max-width: 260px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.user-chip a { color: var(--text-2); }
+
+/* Numbered walk-throughs */
+ol.steps { padding-left: 22px; font-size: 13.5px; color: var(--text-2); line-height: 1.7; margin: 6px 0 16px; max-width: 72ch; }
+ol.steps li { margin-bottom: 7px; text-wrap: pretty; }
+ol.steps li::marker { font-family: var(--mono); color: var(--text-3); }
+ol.steps b, .lede b, .section-head b, .faq-body b { color: var(--text); font-weight: 500; }
+.card code, .lede code, ol.steps code, .faq-body code, .section-head code, .muted code {
+  font-family: var(--mono); font-size: 12px; background: var(--panel-raised);
+  border: 1px solid var(--border); border-radius: 2px; padding: 1px 5px; word-break: break-all;
+}
+.faq-body { padding: 8px 0 10px 18px; font-size: 13px; color: var(--text-2); line-height: 1.65; }
+details summary { font-size: 13px; font-weight: 500; padding: 6px 0; }
+
+/* Key/value status block */
+.kv { display: grid; grid-template-columns: 170px minmax(0,1fr); gap: 9px 16px; font-size: 13px; }
+.kv .k { color: var(--text-3); }
+.kv .v { color: var(--text); }
+@media (max-width: 600px) { .kv { grid-template-columns: 1fr; gap: 2px 0; } .kv .k { margin-top: 8px; } }
+
+/* Email-tag reused as a tiny status chip in the admin screens */
+.email-tag { font-family: var(--mono); font-size: 10.5px; padding: 2px 6px; border-radius: 2px; border: 1px solid var(--border); color: var(--text-3); background: var(--panel-raised); margin-left: 6px; vertical-align: middle; font-weight: 400; }
+.email-tag.verified { color: var(--s-good); background: var(--s-good-bg); border-color: var(--s-good-line); }
+.email-tag.risky { color: var(--s-wait); background: var(--s-wait-bg); border-color: var(--s-wait-line); }
+.email-tag.guess { color: var(--text-3); }
+.email-tag.invalid { color: var(--s-bad); background: var(--s-bad-bg); border-color: var(--s-bad-line); }
+
+/* Provider cards fold when not the chosen one */
+.card.folded { opacity: .55; }
+.card.folded:hover { opacity: 1; }
+.prov-card { cursor: pointer; }
+.prov-card .btn { pointer-events: none; }
+
+/* Forms: a few element types the original sheet never needed */
+textarea.form-input { resize: vertical; min-height: 64px; line-height: 1.5; }
+select.form-input { appearance: auto; }
+input[type='color'] { width: 42px; height: 34px; padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg); cursor: pointer; }
+.check-row { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: var(--text-2); cursor: pointer; line-height: 1.5; }
+.check-row input { margin-top: 3px; flex: none; }
+.field-help { font-size: 12px; color: var(--text-3); margin-top: 5px; max-width: 70ch; text-wrap: pretty; }
+.field-error { font-size: 12px; color: var(--s-bad); margin-top: 4px; }
+.field-error:empty { display: none; }
+.slider-row { display: flex; align-items: center; gap: 14px; max-width: 420px; }
+.slider-row input[type='range'] { flex: 1; }
+.slider-out { font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
+.map-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.map-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr) auto; gap: 6px; }
+@media (max-width: 700px) { .map-row { grid-template-columns: 1fr; } }
+
+/* Configuration: a sticky section index beside the long form */
+.config-layout { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: 30px; align-items: start; }
+.config-nav { position: sticky; top: 22px; display: flex; flex-direction: column; gap: 2px; border-left: 1px solid var(--border); }
+.config-nav a { font-size: 12.5px; color: var(--text-3); text-decoration: none; padding: 5px 12px; border-left: 1.5px solid transparent; margin-left: -1px; }
+.config-nav a:hover { color: var(--text); border-left-color: var(--accent); }
+@media (max-width: 900px) { .config-layout { grid-template-columns: 1fr; } .config-nav { position: static; flex-direction: row; flex-wrap: wrap; border-left: none; } }
+.cfg-section h2 { font-family: var(--serif); font-size: 19px; font-weight: 400; letter-spacing: -0.012em; margin-bottom: 8px; }
+.save-bar {
+  position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 16px;
+  padding: 12px 0; margin-top: 8px; background: var(--bg); border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+/* Logo upload */
+.logo-row { display: flex; gap: 18px; align-items: center; }
+.logo-preview {
+  width: 96px; height: 96px; flex: none; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--border-strong); border-radius: var(--r-md); background: var(--panel-raised); overflow: hidden;
+  font-size: 12px;
+}
+.logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }

@@ -123,20 +123,37 @@ async def get_setup_status():
 
     # 1. Venv
     checks.append({
-        "id": "venv", "label": "Python virtual environment",
+        "id": "venv", "label": "Ambiente Python instalado",
         "done": (PROJECT_ROOT / ".venv").is_dir(),
         "required": True,
-        "help": "Run: python3 -m venv .venv && source .venv/bin/activate && pip install -e .",
+        "help": "Execute o instalador (deploy/install.sh) nesta máquina.",
     })
 
     # 2. Env file
     env_vars = _read_env_file()
     env_exists = ENV_FILE.exists() and bool(env_vars)
     checks.append({
-        "id": "env_file", "label": "Environment file (.env)",
+        "id": "env_file", "label": "Arquivo de chaves (.env)",
         "done": env_exists,
         "required": True,
-        "help": "Go to the Settings tab to enter your API keys.",
+        "help": "Vá em IA, E-mail e Chaves pra preencher o que falta.",
+    })
+
+    # 2b. AI signed in (token from `claude setup-token`, or a local login)
+    brain = _active_brain()
+    if brain and brain.provider == "codex":
+        from harvey.webadmin import _cli_version
+        ai_done = bool(_cli_version("codex"))
+        ai_help = "Instale o Codex CLI na máquina e faça 'codex login' (veja a aba IA)."
+    else:
+        from harvey.webadmin import _token_source
+        ai_done = _token_source() != "none"
+        ai_help = "Na aba IA, cole o token gerado com 'claude setup-token' e clique em Testar."
+    checks.append({
+        "id": "ai", "label": "IA conectada (assinatura)",
+        "done": ai_done,
+        "required": True,
+        "help": ai_help,
     })
 
     # 3. Email provider configured (matches channels.email.provider)
@@ -148,22 +165,22 @@ async def get_setup_status():
     if provider == "gmail":
         provider_done = _has("GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET") and \
             (PROJECT_ROOT / "data" / "gmail_token.json").is_file()
-        provider_help = ("Set GMAIL_CLIENT_ID/SECRET in Settings, then run "
-                         "'harvey gmail auth' in your terminal.")
+        provider_help = ("Na aba E-mail, salve o Client ID/Secret do Google e clique em "
+                         "'Conectar com Google'.")
     elif provider == "microsoft":
         provider_done = _has("M365_CLIENT_ID") and \
             (PROJECT_ROOT / "data" / "m365_token.json").is_file()
-        provider_help = ("Set M365_CLIENT_ID and M365_TENANT_ID in .env, then run "
-                         "'harvey microsoft auth' in your terminal.")
+        provider_help = ("Na aba E-mail, salve o Client ID e o Tenant ID da Microsoft e clique em "
+                         "'Conectar com Microsoft'.")
     elif provider == "smtp":
         provider_done = _has("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD")
-        provider_help = "Enter your SMTP host, username, and password in Settings."
+        provider_help = "Na aba E-mail, preencha servidor, usuário e senha SMTP."
     else:
         instantly_key = env_vars.get("INSTANTLY_API_KEY", "") or os.getenv("INSTANTLY_API_KEY", "")
         provider_done = bool(instantly_key) and instantly_key != "your_instantly_api_key_here"
-        provider_help = "Enter your Instantly API key in Settings."
+        provider_help = "Na aba E-mail, informe a API key do Instantly."
     checks.append({
-        "id": "email_provider", "label": f"Email provider configured ({provider})",
+        "id": "email_provider", "label": f"Provedor de e-mail configurado ({provider})",
         "done": provider_done,
         "required": True,
         "help": provider_help,
@@ -172,11 +189,11 @@ async def get_setup_status():
     # 4. Email verification (needed for addresses to be sendable, not 'guess')
     verifier_set = _has("REOON_API_KEY") or _has("ZEROBOUNCE_API_KEY") or _has("HUNTER_API_KEY")
     checks.append({
-        "id": "verifier", "label": "Email verification key",
+        "id": "verifier", "label": "Chave de verificação de e-mail",
         "done": verifier_set,
         "required": True,
-        "help": "Add a Reoon (free 600/mo), ZeroBounce, or Hunter key in Settings — "
-                "without one, found emails stay 'guess' and are never sent.",
+        "help": "Na aba Chaves, adicione uma chave Reoon (600 grátis/mês), ZeroBounce ou Hunter — "
+                "sem isso, os e-mails encontrados ficam 'não verificados' e nunca são enviados.",
     })
 
     # 5. Config valid
@@ -192,39 +209,39 @@ async def get_setup_status():
         except Exception:
             pass
     checks.append({
-        "id": "config", "label": f"Harvey configured ({config_path.name})",
+        "id": "config", "label": "Produto e cliente ideal configurados",
         "done": config_valid,
         "required": True,
-        "help": "Train Harvey on your product. Use the trainer or set up manually through Claude.",
+        "help": "Use a aba Treinar com o site da sua empresa, ou preencha em Configurações.",
     })
 
     # 6. Product trained
     product_trained = (PROJECT_ROOT / "skills" / "product_knowledge.md").exists()
     checks.append({
-        "id": "product_trained", "label": "Product knowledge trained",
+        "id": "product_trained", "label": "Conhecimento do produto treinado",
         "done": product_trained,
         "required": True,
-        "help": "Run: harvey train https://yourwebsite.com (or set up through Claude).",
+        "help": "Na aba Treinar, cole o endereço do site da sua empresa.",
     })
 
     # 7. LinkedIn (optional)
     linkedin_email = env_vars.get("LINKEDIN_EMAIL", "") or os.getenv("LINKEDIN_EMAIL", "")
     linkedin_pass = env_vars.get("LINKEDIN_PASSWORD", "") or os.getenv("LINKEDIN_PASSWORD", "")
     checks.append({
-        "id": "linkedin", "label": "LinkedIn credentials",
+        "id": "linkedin", "label": "Credenciais do LinkedIn",
         "done": bool(linkedin_email) and bool(linkedin_pass),
         "required": False,
-        "help": "Optional. Enter your LinkedIn credentials in Settings to enable LinkedIn prospecting.",
+        "help": "Opcional e arriscado. Informe em Chaves pra prospectar no LinkedIn.",
     })
 
     # 8. Cloudflare (optional)
     cf_id = env_vars.get("CLOUDFLARE_ACCOUNT_ID", "") or os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
     cf_token = env_vars.get("CLOUDFLARE_API_TOKEN", "") or os.getenv("CLOUDFLARE_API_TOKEN", "")
     checks.append({
-        "id": "cloudflare", "label": "Cloudflare deep crawling",
+        "id": "cloudflare", "label": "Leitura profunda de sites (Cloudflare)",
         "done": bool(cf_id) and bool(cf_token),
         "required": False,
-        "help": "Optional. For JavaScript-rendered website crawling during training.",
+        "help": "Opcional. Pra ler sites em JavaScript durante o treinamento.",
     })
 
     required_checks = [c for c in checks if c["required"]]
@@ -438,16 +455,49 @@ async def get_harvey_status():
     return {"running": pid is not None, "pid": pid, "started_at": started}
 
 
+def _agent_unit() -> str:
+    """When the heartbeat is a systemd service (the VM install), the
+    dashboard starts/stops it through systemctl so it survives dashboard
+    restarts and comes back on boot. Empty = plain subprocess (laptop)."""
+    return os.getenv("HARVEY_AGENT_UNIT", "").strip()
+
+
+def _systemctl(action: str, unit: str) -> tuple[bool, str]:
+    cmd = ["systemctl", action, unit]
+    if os.geteuid() != 0:
+        cmd = ["sudo", "-n"] + cmd
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, str(e)
+    if out.returncode != 0:
+        return False, (out.stderr or out.stdout).strip()[:300]
+    return True, ""
+
+
 @app.post("/api/harvey/start")
 async def start_harvey():
     """Start Harvey's heartbeat loop as a subprocess."""
     global _harvey_process, _harvey_started_at
 
     if _check_harvey_pid():
-        return {"success": False, "message": "Harvey is already running."}
+        return {"success": False, "message": "O Harvey já está rodando."}
 
     # Ensure data dir exists
     (PROJECT_ROOT / "data").mkdir(parents=True, exist_ok=True)
+
+    unit = _agent_unit()
+    if unit:
+        ok, err = _systemctl("start", unit)
+        if not ok:
+            return {"success": False, "message": f"systemctl start {unit} falhou: {err}"}
+        _harvey_started_at = datetime.now()
+        # main.py writes the PID file itself within a second or two.
+        for _ in range(20):
+            await asyncio.sleep(0.25)
+            if _check_harvey_pid():
+                break
+        return {"success": True, "pid": _check_harvey_pid(), "unit": unit}
 
     try:
         log_handle = open(LOG_FILE, "a")
@@ -483,7 +533,17 @@ async def stop_harvey():
 
     pid = _check_harvey_pid()
     if not pid:
-        return {"success": False, "message": "Harvey is not running."}
+        return {"success": False, "message": "O Harvey não está rodando."}
+
+    unit = _agent_unit()
+    if unit:
+        ok, err = _systemctl("stop", unit)
+        if not ok:
+            return {"success": False, "message": f"systemctl stop {unit} falhou: {err}"}
+        _harvey_process = None
+        _harvey_started_at = None
+        PID_FILE.unlink(missing_ok=True)
+        return {"success": True, "unit": unit}
 
     try:
         os.kill(pid, signal.SIGTERM)
@@ -1055,9 +1115,9 @@ async def get_today():
         if paused:
             items.append({
                 "key": "paused", "tone": "bad",
-                "title": "Sending is paused",
-                "detail": str(paused) + ". Nothing will go out until you resume it.",
-                "action": "Review and resume", "tab": "outbox",
+                "title": "Os envios estão pausados",
+                "detail": str(paused) + ". Nada sai até você retomar.",
+                "action": "Revisar e retomar", "tab": "outbox",
             })
 
         setup = await get_setup_status()
@@ -1066,65 +1126,65 @@ async def get_today():
                        if c.get("required") and not c.get("done")]
             items.append({
                 "key": "setup", "tone": "warn",
-                "title": "Finish setting Harvey up",
-                "detail": ", ".join(missing[:3]) or "Some required steps are incomplete.",
-                "action": "Open setup", "tab": "settings",
+                "title": "Termine de configurar o Harvey",
+                "detail": ", ".join(missing[:3]) or "Faltam passos obrigatórios.",
+                "action": "Abrir configuração", "tab": "brain",
             })
 
         if proposed:
             items.append({
                 "key": "signals", "tone": "warn",
-                "title": (f"{len(proposed)} signal waiting for your confirmation"
+                "title": (f"{len(proposed)} sinal esperando sua confirmação"
                           if len(proposed) == 1
-                          else f"{len(proposed)} signals waiting for your confirmation"),
-                "detail": ("Harvey won't collect anything you haven't approved. "
-                           "Confirm which signals define a good prospect for you."),
-                "action": "Review signals", "tab": "signals",
+                          else f"{len(proposed)} sinais esperando sua confirmação"),
+                "detail": ("O Harvey não coleta nada que você não aprovou. "
+                           "Confirme quais sinais definem um bom prospect pra você."),
+                "action": "Revisar sinais", "tab": "signals",
             })
         elif not confirmed:
             items.append({
                 "key": "signals-none", "tone": "warn",
-                "title": "No signals confirmed",
-                "detail": "Every signal is rejected, so prospecting has nothing to collect.",
-                "action": "Review signals", "tab": "signals",
+                "title": "Nenhum sinal confirmado",
+                "detail": "Todos os sinais estão rejeitados, então a prospecção não tem o que coletar.",
+                "action": "Revisar sinais", "tab": "signals",
             })
 
         if not n_companies and confirmed:
             items.append({
                 "key": "discover", "tone": "good",
-                "title": "No companies yet",
-                "detail": ("Signals are confirmed but nothing has been collected. "
-                           "Discovery is free to try — no account needed."),
-                "action": "Find businesses", "tab": "discover",
+                "title": "Nenhuma empresa ainda",
+                "detail": ("Os sinais estão confirmados mas nada foi coletado. "
+                           "Descobrir é grátis pra testar — não precisa de conta."),
+                "action": "Encontrar empresas", "tab": "discover",
             })
 
         unprofiled = unprofiled_count
         if unprofiled:
             items.append({
                 "key": "profile", "tone": "good",
-                "title": f"{unprofiled} companies not looked at yet",
-                "detail": ("Reading their websites is free and it is what makes "
-                           "an email specific — who their agency is, what they "
-                           "are missing, whether they are spending on ads."),
-                "action": "Read their sites", "tab": "discover",
+                "title": f"{unprofiled} empresas ainda não analisadas",
+                "detail": ("Ler o site delas é grátis e é o que deixa um e-mail "
+                           "específico — quem é a agência, o que falta no site, "
+                           "se estão gastando com anúncios."),
+                "action": "Ler os sites", "tab": "discover",
             })
 
         if pending:
             items.append({
                 "key": "outbox", "tone": "warn",
-                "title": (f"{len(pending)} email waiting for approval" if len(pending) == 1
-                          else f"{len(pending)} emails waiting for approval"),
-                "detail": "Nothing sends until you approve it. Read them one at a time.",
-                "action": "Open the decisions desk", "tab": "outbox",
+                "title": (f"{len(pending)} e-mail esperando aprovação" if len(pending) == 1
+                          else f"{len(pending)} e-mails esperando aprovação"),
+                "detail": "Nada é enviado até você aprovar. Leia um de cada vez.",
+                "action": "Abrir a caixa de saída", "tab": "outbox",
             })
 
         if open_convos:
             items.append({
                 "key": "replies", "tone": "good",
-                "title": (f"{open_convos} live conversation" if open_convos == 1
-                          else f"{open_convos} live conversations"),
-                "detail": "People replied. Check how Harvey is handling them.",
-                "action": "Read conversations", "tab": "conversations",
+                "title": (f"{open_convos} conversa em andamento" if open_convos == 1
+                          else f"{open_convos} conversas em andamento"),
+                "detail": "Tem gente respondendo. Veja como o Harvey está lidando.",
+                "action": "Ler conversas", "tab": "conversations",
             })
 
         return {"items": items, "stats": stats}
@@ -1331,6 +1391,12 @@ async def static_file(path: str):
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
     return (WEB_DIR / "index.html").read_text(encoding="utf-8")
+
+
+# Browser-only administration (AI sign-in, mailbox OAuth, config form,
+# training, branding, Cloudflare Access guard). See harvey/webadmin.py.
+from harvey import webadmin as _webadmin  # noqa: E402
+_webadmin.install(app)
 
 
 def start_dashboard(host: str = "127.0.0.1", port: int = 5555):
