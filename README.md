@@ -1,5 +1,18 @@
 # Harvey
 
+> **Este fork: Harvey na nuvem, só pelo navegador, em português.**
+> Painel 100% em PT-BR com tudo configurável pela interface (login da IA por token,
+> caixa de e-mail com "Conectar com Google", formulário completo do `harvey.yaml`,
+> treinamento, logo, tema e cor), guard de login do Cloudflare Access com lista de
+> e-mails permitidos, e um instalador pra VM gratuita da Oracle com Cloudflare Tunnel.
+> **Guia passo a passo: [docs/deploy-oracle.md](docs/deploy-oracle.md).**
+> Continua usando só a sua assinatura do Claude: sem API key, sem custo extra.
+>
+> O que mudou em relação ao original: `harvey/webadmin.py` (novas rotas),
+> `harvey/web/app-admin.js` + `index.html` (telas novas, PT-BR), `deploy/`
+> (instalador + systemd), e o painel passa a ler `CLAUDE_CODE_OAUTH_TOKEN`.
+
+
 **An autonomous sales agent that runs on your Claude Code or Codex subscription.**
 
 Harvey finds businesses worth selling to, learns something specific about each one, writes cold email that references it, sends it, reads the replies, and works the conversation toward a meeting. It runs on your machine, in a loop, on its own.

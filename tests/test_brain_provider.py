@@ -622,7 +622,7 @@ def test_paused_brain_is_visible_on_the_dashboard(client, monkeypatch):
     stats = client.get("/api/stats").json()
     assert stats["brain_status"]["status"] == "paused"
     html = _render_js("brainCallChips", stats)
-    assert "Codex <b>paused</b>" in html and "login has expired" in html
+    assert "Codex <b>pausado</b>" in html and "login has expired" in html
     healthy = _render_js("brainCallChips", {**stats, "brain_status": {}})
     assert "paused" not in healthy
 
@@ -682,8 +682,8 @@ def test_cli_status_check_reports_readiness(monkeypatch, tmp_path, capsys):
 def test_quota_card_renders_unavailable_codex_quota():
     html = _render_quota_card({"quota_provider": "codex", "quota_status": "unavailable",
                                "quota": None})
-    assert "Codex (ChatGPT plan) Quota" in html
-    assert "Quota unavailable" in html and "ChatGPT plan" in html
+    assert "Cota do Codex (plano ChatGPT)" in html
+    assert "Cota indisponível" in html and "plano ChatGPT" in html
     assert "progress-bar" not in html
 
 
@@ -691,10 +691,10 @@ def test_quota_card_renders_gauges_and_limit_reached():
     html = _render_quota_card({"quota_provider": "codex", "quota_status": "available",
                                "quota": {"limit_reached": {"utilization": 100.0,
                                                            "resets_at": ""}}})
-    assert "Usage limit reached" in html and "100%" in html
+    assert "Limite de uso atingido" in html and "100%" in html
     assert _render_quota_card({"quota_provider": "", "quota": None}) == ""
     claude = _render_quota_card({"quota_provider": "claude", "quota": None})
-    assert "Claude Subscription Quota" in claude and "unavailable" in claude
+    assert "Cota da assinatura Claude" in claude and "indisponível" in claude
 
 
 def test_cli_usage_reads_only_the_active_providers_quota(monkeypatch, tmp_path, capsys):

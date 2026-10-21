@@ -1,0 +1,26 @@
+# Painel web do Harvey (só escuta em localhost; o cloudflared expõe pra internet)
+[Unit]
+Description=Harvey dashboard (web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__HOME__/harvey
+Environment=PYTHONUNBUFFERED=1
+# O painel inicia/para o ciclo via systemctl em vez de subprocesso,
+# pra ele sobreviver a reinícios do painel e voltar sozinho no boot.
+Environment=HARVEY_AGENT_UNIT=harvey-agent
+# O painel original exige um token impresso no terminal; aqui ninguém vê o
+# terminal, e quem decide quem entra é o Cloudflare Access (+ a checagem de
+# e-mail em Chaves). O painel só escuta em 127.0.0.1, atrás do túnel.
+Environment=HARVEY_DASHBOARD_TOKEN_AUTH=0
+# A CLI do Claude é instalada em ~/.local/bin pelo instalador.
+Environment=PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=__HOME__/harvey/.venv/bin/python -m uvicorn harvey.dashboard:app --host 127.0.0.1 --port 5555 --log-level warning
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

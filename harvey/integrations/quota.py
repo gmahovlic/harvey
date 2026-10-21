@@ -10,6 +10,7 @@ counting. Responses are cached in-memory to stay polite.
 import asyncio
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -26,6 +27,7 @@ USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 OAUTH_BETA_HEADER = "oauth-2025-04-20"
 CACHE_TTL_OK = 300.0     # seconds to reuse a good response
 CACHE_TTL_FAIL = 60.0    # seconds to back off after a failure
+CACHE_TTL_RATE_LIMITED = 900.0   # after a 429: honour Retry-After, never less than this
 REQUEST_TIMEOUT = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
 
 # macOS keychain item Claude Code stores credentials under.
@@ -53,6 +55,13 @@ def get_oauth_token() -> Optional[str]:
     Tries the credentials file (Linux / CLAUDE_CONFIG_DIR overrides),
     then the macOS keychain. Returns None when not logged in.
     """
+    # A long-lived token from `claude setup-token` (the headless/VM path):
+    # the CLI itself reads this variable, so the quota gauge must too, or
+    # the dashboard says "not logged in" while calls are in fact working.
+    env_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+    if env_token:
+        return env_token
+
     creds_file = claude_config_dir() / ".credentials.json"
     try:
         if creds_file.is_file():
@@ -139,6 +148,9 @@ class QuotaClient:
         self._cache_at = 0.0
         self._cache_ttl = 0.0
         self._lock = asyncio.Lock()
+        # Why the last fetch returned None, for the dashboard to show.
+        self.last_error = ""
+        self._retry_after = 0.0
 
     async def get_utilization(self) -> Optional[dict]:
         """Return {'five_hour': {...}, 'seven_day': {...}} or None.
@@ -152,17 +164,25 @@ class QuotaClient:
             if self._cache_at and now - self._cache_at < self._cache_ttl:
                 return self._cache
 
+            self._retry_after = 0.0
             result = await self._fetch()
             self._cache = result
             self._cache_at = now
-            self._cache_ttl = CACHE_TTL_OK if result else CACHE_TTL_FAIL
+            if result:
+                self._cache_ttl = CACHE_TTL_OK
+            elif self._retry_after:
+                self._cache_ttl = max(CACHE_TTL_RATE_LIMITED, self._retry_after)
+            else:
+                self._cache_ttl = CACHE_TTL_FAIL
             return result
 
     async def _fetch(self) -> Optional[dict]:
         token = await asyncio.get_event_loop().run_in_executor(None, get_oauth_token)
         if not token:
+            self.last_error = "nenhum token do Claude encontrado"
             logger.debug("Quota: no Claude OAuth token found; falling back.")
             return None
+        self.last_error = ""
 
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
@@ -174,10 +194,28 @@ class QuotaClient:
                     },
                 )
         except httpx.HTTPError as e:
+            self.last_error = f"falha de rede: {e}"
             logger.debug(f"Quota fetch failed: {e}")
             return None
 
+        if resp.status_code == 429:
+            # Rate limited: back off for as long as they ask (and at least a
+            # while), or the retries themselves keep the limit tripped.
+            try:
+                self._retry_after = float(resp.headers.get("retry-after", "0") or 0)
+            except ValueError:
+                self._retry_after = 0.0
+            wait = max(CACHE_TTL_RATE_LIMITED, self._retry_after)
+            self.last_error = (f"a Anthropic respondeu HTTP 429 (muitas consultas); "
+                               f"nova tentativa em {int(wait // 60)} min")
+            logger.debug("Quota endpoint rate limited; backing off %ss", wait)
+            return None
+
         if resp.status_code != 200:
+            self.last_error = f"a Anthropic respondeu HTTP {resp.status_code}"
+            if resp.status_code in (401, 403):
+                self.last_error += (" (o token de um ano do setup-token só pode chamar o modelo; "
+                                    "o medidor de cota não funciona com ele)")
             logger.debug(f"Quota endpoint returned {resp.status_code}.")
             return None
 

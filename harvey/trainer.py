@@ -213,10 +213,15 @@ class FallbackCrawler:
         self.blocked = False
         pages: dict[str, str] = {}
         visited: set[str] = set()
-        domain = urlparse(base_url).netloc
+        parsed_base = urlparse(base_url)
+        domain = parsed_base.netloc
+        prefix = parsed_base.path.rstrip("/")
 
-        # Queue starts with priority paths, then discovered links
-        queue: list[str] = [urljoin(base_url, p) for p in FALLBACK_PATHS]
+        # Queue starts with the site itself, then priority paths under the
+        # same prefix (urljoin would drop the prefix for "/about"), then
+        # discovered links.
+        queue: list[str] = [f"{parsed_base.scheme}://{domain}{prefix}/"]
+        queue += [f"{parsed_base.scheme}://{domain}{prefix}{p}" for p in FALLBACK_PATHS if p != "/"]
 
         async with public_http_client(
             timeout=15,
@@ -247,7 +252,9 @@ class FallbackCrawler:
 
                 # Discover new links from this page and add to queue
                 if html:
-                    new_links = self._extract_links(html, base_url, domain)
+                    # Relative links ("sobre.html") resolve against the page
+                    # they were found on, not the site root.
+                    new_links = self._extract_links(html, url, domain)
                     for link in new_links:
                         norm = self._normalize_url(link)
                         if norm not in visited and link not in queue:
@@ -458,7 +465,10 @@ class Trainer:
             print(f"\nERROR: '{url}' doesn't look like a valid URL.")
             print("Try something like: https://yourcompany.com")
             return None
-        base_url = f"{parsed.scheme}://{domain}"
+        # Keep a path prefix (github.io/project, company.com/pt, …): the site
+        # may live entirely under it, and its root may not even exist.
+        prefix = parsed.path.rstrip("/")
+        base_url = f"{parsed.scheme}://{domain}{prefix}"
 
         logger.info(f"Training Harvey on {base_url}...")
         print(f"\n{'='*60}")

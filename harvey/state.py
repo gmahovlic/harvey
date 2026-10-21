@@ -9,13 +9,20 @@ list tracked with SQLite's ``PRAGMA user_version`` so existing user DBs
 upgrade cleanly in place.
 """
 
+import asyncio
 import json
+import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 
 import aiosqlite
+
+try:
+    import fcntl  # POSIX only; on Windows init_db relies on the idempotent ALTERs
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 from harvey.models.company import Company
 from harvey.models.prospect import Prospect
@@ -482,22 +489,70 @@ class StateManager:
             await db.close()
 
     async def init_db(self):
-        """Create/upgrade the schema. Safe to call on every startup."""
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        async with self._connect() as db:
-            # WAL is persistent in the DB file: readers (dashboard) never
-            # block the writer (agent) and vice versa.
-            await db.execute("PRAGMA journal_mode=WAL")
-            await db.execute("PRAGMA synchronous=NORMAL")
+        """Create/upgrade the schema. Safe to call on every startup.
 
-            async with db.execute("PRAGMA user_version") as cursor:
-                (version,) = await cursor.fetchone()
+        Safe to call *concurrently* too: the dashboard fires several
+        requests at once on first load and the agent may be starting at the
+        same moment. Without a lock, two callers both see an old
+        user_version and both run the same ``ALTER TABLE ... ADD COLUMN``;
+        the loser raises "duplicate column name" and, worse, can leave the
+        file with the column present but the version not bumped, so every
+        later start fails the same way. Two defences: a cross-process file
+        lock around the migration run, and ALTER statements that skip
+        columns which already exist, which also heals a file left in that
+        half-migrated state.
+        """
+        path = Path(self.db_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = None
+        if fcntl is not None:
+            lock_file = open(path.with_name(path.name + ".initlock"), "w")
+            # flock blocks, so wait in a thread rather than stalling the loop.
+            await asyncio.to_thread(fcntl.flock, lock_file, fcntl.LOCK_EX)
+        try:
+            async with self._connect() as db:
+                # WAL is persistent in the DB file: readers (dashboard) never
+                # block the writer (agent) and vice versa.
+                await db.execute("PRAGMA journal_mode=WAL")
+                await db.execute("PRAGMA synchronous=NORMAL")
 
-            for target, script in enumerate(MIGRATIONS, start=1):
-                if version < target:
-                    await db.executescript(script)
-                    await db.execute(f"PRAGMA user_version = {target}")
-                    await db.commit()
+                async with db.execute("PRAGMA user_version") as cursor:
+                    (version,) = await cursor.fetchone()
+
+                for target, script in enumerate(MIGRATIONS, start=1):
+                    if version < target:
+                        script = await self._without_existing_columns(db, script)
+                        await db.executescript(script)
+                        await db.execute(f"PRAGMA user_version = {target}")
+                        await db.commit()
+        finally:
+            if lock_file is not None:
+                try:
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
+                finally:
+                    lock_file.close()
+
+    _ALTER_ADD_COLUMN = re.compile(
+        r"^[ \t]*ALTER TABLE[ \t]+(\w+)[ \t]+ADD COLUMN[ \t]+(\w+)\b[^;]*;[ \t]*$",
+        re.MULTILINE,
+    )
+
+    async def _without_existing_columns(self, db, script: str) -> str:
+        """Drop ``ALTER TABLE t ADD COLUMN c`` statements whose column is
+        already there. Every other statement in MIGRATIONS is written with
+        IF NOT EXISTS, so this is the one thing that makes a re-run fail."""
+        async def has_column(table: str, column: str) -> bool:
+            async with db.execute(f"PRAGMA table_info({table})") as cursor:
+                return any(row[1] == column for row in await cursor.fetchall())
+
+        pieces = []
+        last = 0
+        for match in self._ALTER_ADD_COLUMN.finditer(script):
+            if await has_column(match.group(1), match.group(2)):
+                pieces.append(script[last:match.start()])
+                last = match.end()
+        pieces.append(script[last:])
+        return "".join(pieces)
 
     # ── Companies ──
 
