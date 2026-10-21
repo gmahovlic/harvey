@@ -506,7 +506,7 @@ class StateManager:
         path.parent.mkdir(parents=True, exist_ok=True)
         lock_file = None
         if fcntl is not None:
-            lock_file = open(path.with_name(path.name + ".initlock"), "w")
+            lock_file = open(path.with_name(path.name + ".initlock"), "w", encoding="utf-8")
             # flock blocks, so wait in a thread rather than stalling the loop.
             await asyncio.to_thread(fcntl.flock, lock_file, fcntl.LOCK_EX)
         try:

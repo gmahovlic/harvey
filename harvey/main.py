@@ -481,7 +481,7 @@ def main():
     pid_file = PROJECT_ROOT / "data" / "harvey.pid"
     try:
         pid_file.parent.mkdir(parents=True, exist_ok=True)
-        pid_file.write_text(str(os.getpid()))
+        pid_file.write_text(str(os.getpid()), encoding="utf-8")
     except OSError as e:
         logger.warning(f"Could not write PID file: {e}")
 
@@ -491,7 +491,7 @@ def main():
         logger.info("Goodbye.")
     finally:
         try:
-            if pid_file.is_file() and pid_file.read_text().strip() == str(os.getpid()):
+            if pid_file.is_file() and pid_file.read_text(encoding="utf-8").strip() == str(os.getpid()):
                 pid_file.unlink()
         except OSError:
             pass
