@@ -10,7 +10,7 @@ User=__USER__
 WorkingDirectory=__HOME__/harvey
 Environment=PYTHONUNBUFFERED=1
 Environment=PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=__HOME__/harvey/.venv/bin/python -m harvey
+ExecStart=__HOME__/harvey/.venv/bin/python -m harvey.main
 # on-failure, não always: "Parar Harvey" no painel manda SIGTERM e ele sai limpo (código 0).
 Restart=on-failure
 RestartSec=30
