@@ -829,7 +829,7 @@ def test_fragment_token_moves_to_session_storage_and_leaves_the_url():
     assert out["call"]["auth"] == f"Bearer {token}"
     assert out["call"]["url"] == "http://127.0.0.1:5555/api/companies"
     assert out["call"]["ctype"] == "application/json"
-    assert out["call"]["mode"] == "same-origin" and out["call"]["credentials"] == "omit"
+    assert out["call"]["mode"] == "same-origin" and out["call"]["credentials"] == "same-origin"
     assert out["call"]["redirect"] == "error" and out["call"]["referrerPolicy"] == "no-referrer"
 
 

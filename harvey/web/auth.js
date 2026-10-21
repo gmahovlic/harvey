@@ -56,7 +56,10 @@ function authFetch(path, opts) {
   if (token) headers.set('Authorization', 'Bearer ' + token);
   o.headers = headers;
   o.mode = 'same-origin';
-  o.credentials = 'omit';
+  // Same-origin cookies must travel: behind Cloudflare Access the session
+  // cookie is what lets the request through at all. (Upstream omits them
+  // because its token is the only credential.)
+  o.credentials = 'same-origin';
   o.cache = 'no-store';
   o.redirect = 'error';
   o.referrerPolicy = 'no-referrer';
