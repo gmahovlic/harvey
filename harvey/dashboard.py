@@ -73,6 +73,14 @@ class TunnelAwareGuard:
         flag = os.getenv("HARVEY_DASHBOARD_TOKEN_AUTH", "").strip().lower()
         if flag in ("0", "false", "off", "no"):
             return True
+        if flag in ("1", "true", "on", "yes"):
+            return False
+        # The VM deployment (deploy/): the dashboard is a systemd service
+        # behind Cloudflare Tunnel, started with HARVEY_AGENT_UNIT set. That
+        # unit predates the token guard, so an installed copy without the
+        # explicit flag must still work.
+        if os.getenv("HARVEY_AGENT_UNIT", "").strip():
+            return True
         try:
             from harvey.webadmin import access_enforced
             return access_enforced()
