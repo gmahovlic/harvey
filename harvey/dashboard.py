@@ -50,7 +50,50 @@ def _resolve_config_file() -> Path:
 # route except the static shell needs the token (see dashboard_auth).
 app = FastAPI(title="Harvey Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
 token_store = auth.TokenStore(TOKEN_FILE)
-app.add_middleware(auth.DashboardGuard, store=token_store)
+
+
+class TunnelAwareGuard:
+    """Upstream's token guard, except when something else already stands
+    in front of the dashboard.
+
+    The token link is right for a laptop. Behind Cloudflare Tunnel + Access
+    (deploy/), nobody sees the terminal that prints it, and Access plus the
+    JWT check in harvey/webadmin.py already decide who gets in. So the
+    token is waived when the Access guard is enforced, or when the service
+    says so explicitly (HARVEY_DASHBOARD_TOKEN_AUTH=0, set by the systemd
+    unit). Decided per request, so turning Access on takes effect at once.
+    """
+
+    def __init__(self, app, store):
+        self.app = app
+        self.guard = auth.DashboardGuard(app, store=store)
+
+    @staticmethod
+    def waived() -> bool:
+        flag = os.getenv("HARVEY_DASHBOARD_TOKEN_AUTH", "").strip().lower()
+        if flag in ("0", "false", "off", "no"):
+            return True
+        try:
+            from harvey.webadmin import access_enforced
+            return access_enforced()
+        except Exception:  # noqa: BLE001 — never fail open on an import error
+            return False
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and self.waived():
+            return await self.app(scope, receive, send)
+        return await self.guard(scope, receive, send)
+
+
+app.add_middleware(TunnelAwareGuard, store=token_store)
+
+# Credentials the operator saved through the browser (the Claude token, mail
+# keys) live in .env. The subprocesses this dashboard launches — `claude -p`
+# for the connection test, the agent itself — inherit this process's
+# environment, so .env has to be in it from the start, not only after the
+# next save. Never override: a value set by systemd or the shell wins.
+if ENV_FILE.is_file():
+    load_dotenv(str(ENV_FILE))
 
 # Harvey process tracking
 _harvey_process: subprocess.Popen | None = None
@@ -181,20 +224,37 @@ async def get_setup_status():
 
     # 1. Venv
     checks.append({
-        "id": "venv", "label": "Python virtual environment",
+        "id": "venv", "label": "Ambiente Python instalado",
         "done": (PROJECT_ROOT / ".venv").is_dir(),
         "required": True,
-        "help": "Run: python3 -m venv .venv && source .venv/bin/activate && pip install -e .",
+        "help": "Execute o instalador (deploy/install.sh) nesta máquina.",
     })
 
     # 2. Env file
     env_vars = _read_env_file()
     env_exists = ENV_FILE.exists() and bool(env_vars)
     checks.append({
-        "id": "env_file", "label": "Environment file (.env)",
+        "id": "env_file", "label": "Arquivo de chaves (.env)",
         "done": env_exists,
         "required": True,
-        "help": "Go to the Settings tab to enter your API keys.",
+        "help": "Vá em IA, E-mail e Chaves pra preencher o que falta.",
+    })
+
+    # 2b. AI signed in (token from `claude setup-token`, or a local login)
+    brain = _active_brain()
+    if brain and brain.provider == "codex":
+        from harvey.webadmin import _cli_version
+        ai_done = bool(_cli_version("codex"))
+        ai_help = "Instale o Codex CLI na máquina e faça 'codex login' (veja a aba IA)."
+    else:
+        from harvey.webadmin import _token_source
+        ai_done = _token_source() != "none"
+        ai_help = "Na aba IA, cole o token gerado com 'claude setup-token' e clique em Testar."
+    checks.append({
+        "id": "ai", "label": "IA conectada (assinatura)",
+        "done": ai_done,
+        "required": True,
+        "help": ai_help,
     })
 
     # 3. Email provider configured (matches channels.email.provider)
@@ -206,22 +266,22 @@ async def get_setup_status():
     if provider == "gmail":
         provider_done = _has("GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET") and \
             (PROJECT_ROOT / "data" / "gmail_token.json").is_file()
-        provider_help = ("Set GMAIL_CLIENT_ID/SECRET in Settings, then run "
-                         "'harvey gmail auth' in your terminal.")
+        provider_help = ("Na aba E-mail, salve o Client ID/Secret do Google e clique em "
+                         "'Conectar com Google'.")
     elif provider == "microsoft":
         provider_done = _has("M365_CLIENT_ID") and \
             (PROJECT_ROOT / "data" / "m365_token.json").is_file()
-        provider_help = ("Set the Microsoft 365 client and tenant IDs in Settings, then run "
-                         "'harvey microsoft auth' in your terminal.")
+        provider_help = ("Na aba E-mail, salve o Client ID e o Tenant ID da Microsoft e clique em "
+                         "'Conectar com Microsoft'.")
     elif provider == "smtp":
         provider_done = _has("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD")
-        provider_help = "Enter your SMTP host, username, and password in Settings."
+        provider_help = "Na aba E-mail, preencha servidor, usuário e senha SMTP."
     else:
         instantly_key = env_vars.get("INSTANTLY_API_KEY", "") or os.getenv("INSTANTLY_API_KEY", "")
         provider_done = bool(instantly_key) and instantly_key != "your_instantly_api_key_here"
-        provider_help = "Enter your Instantly API key in Settings."
+        provider_help = "Na aba E-mail, informe a API key do Instantly."
     checks.append({
-        "id": "email_provider", "label": f"Email provider configured ({provider})",
+        "id": "email_provider", "label": f"Provedor de e-mail configurado ({provider})",
         "done": provider_done,
         "required": True,
         "help": provider_help,
@@ -230,11 +290,11 @@ async def get_setup_status():
     # 4. Email verification (needed for addresses to be sendable, not 'guess')
     verifier_set = _has("REOON_API_KEY") or _has("ZEROBOUNCE_API_KEY") or _has("HUNTER_API_KEY")
     checks.append({
-        "id": "verifier", "label": "Email verification key",
+        "id": "verifier", "label": "Chave de verificação de e-mail",
         "done": verifier_set,
         "required": True,
-        "help": "Add a Reoon (free 600/mo), ZeroBounce, or Hunter key in Settings — "
-                "without one, found emails stay 'guess' and are never sent.",
+        "help": "Na aba Chaves, adicione uma chave Reoon (600 grátis/mês), ZeroBounce ou Hunter — "
+                "sem isso, os e-mails encontrados ficam 'não verificados' e nunca são enviados.",
     })
 
     # 5. Config valid
@@ -249,39 +309,39 @@ async def get_setup_status():
         except Exception:
             pass
     checks.append({
-        "id": "config", "label": f"Harvey configured ({config_path.name})",
+        "id": "config", "label": "Produto e cliente ideal configurados",
         "done": config_valid,
         "required": True,
-        "help": "Train Harvey on your product. Use the trainer or set up manually through Claude.",
+        "help": "Use a aba Treinar com o site da sua empresa, ou preencha em Configurações.",
     })
 
     # 6. Product trained
     product_trained = (PROJECT_ROOT / "skills" / "product_knowledge.md").exists()
     checks.append({
-        "id": "product_trained", "label": "Product knowledge trained",
+        "id": "product_trained", "label": "Conhecimento do produto treinado",
         "done": product_trained,
         "required": True,
-        "help": "Run: harvey train https://yourwebsite.com (or set up through Claude).",
+        "help": "Na aba Treinar, cole o endereço do site da sua empresa.",
     })
 
     # 7. LinkedIn (optional)
     linkedin_email = env_vars.get("LINKEDIN_EMAIL", "") or os.getenv("LINKEDIN_EMAIL", "")
     linkedin_pass = env_vars.get("LINKEDIN_PASSWORD", "") or os.getenv("LINKEDIN_PASSWORD", "")
     checks.append({
-        "id": "linkedin", "label": "LinkedIn credentials",
+        "id": "linkedin", "label": "Credenciais do LinkedIn",
         "done": bool(linkedin_email) and bool(linkedin_pass),
         "required": False,
-        "help": "Optional. Enter your LinkedIn credentials in Settings to enable LinkedIn prospecting.",
+        "help": "Opcional e arriscado. Informe em Chaves pra prospectar no LinkedIn.",
     })
 
     # 8. Cloudflare (optional)
     cf_id = env_vars.get("CLOUDFLARE_ACCOUNT_ID", "") or os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
     cf_token = env_vars.get("CLOUDFLARE_API_TOKEN", "") or os.getenv("CLOUDFLARE_API_TOKEN", "")
     checks.append({
-        "id": "cloudflare", "label": "Cloudflare deep crawling",
+        "id": "cloudflare", "label": "Leitura profunda de sites (Cloudflare)",
         "done": bool(cf_id) and bool(cf_token),
         "required": False,
-        "help": "Optional. For JavaScript-rendered website crawling during training.",
+        "help": "Opcional. Pra ler sites em JavaScript durante o treinamento.",
     })
 
     required_checks = [c for c in checks if c["required"]]
@@ -515,16 +575,49 @@ async def get_harvey_status():
     return {"running": pid is not None, "pid": pid, "started_at": started}
 
 
+def _agent_unit() -> str:
+    """When the heartbeat is a systemd service (the VM install), the
+    dashboard starts/stops it through systemctl so it survives dashboard
+    restarts and comes back on boot. Empty = plain subprocess (laptop)."""
+    return os.getenv("HARVEY_AGENT_UNIT", "").strip()
+
+
+def _systemctl(action: str, unit: str) -> tuple[bool, str]:
+    cmd = ["systemctl", action, unit]
+    if os.geteuid() != 0:
+        cmd = ["sudo", "-n"] + cmd
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, str(e)
+    if out.returncode != 0:
+        return False, (out.stderr or out.stdout).strip()[:300]
+    return True, ""
+
+
 @app.post("/api/harvey/start")
 async def start_harvey():
     """Start Harvey's heartbeat loop as a subprocess."""
     global _harvey_process, _harvey_started_at
 
     if _check_harvey_pid():
-        return {"success": False, "message": "Harvey is already running."}
+        return {"success": False, "message": "O Harvey já está rodando."}
 
     # Ensure data dir exists
     (PROJECT_ROOT / "data").mkdir(parents=True, exist_ok=True)
+
+    unit = _agent_unit()
+    if unit:
+        ok, err = _systemctl("start", unit)
+        if not ok:
+            return {"success": False, "message": f"systemctl start {unit} falhou: {err}"}
+        _harvey_started_at = datetime.now()
+        # main.py writes the PID file itself within a second or two.
+        for _ in range(20):
+            await asyncio.sleep(0.25)
+            if _check_harvey_pid():
+                break
+        return {"success": True, "pid": _check_harvey_pid(), "unit": unit}
 
     try:
         log_handle = open(LOG_FILE, "a", encoding="utf-8")
@@ -560,7 +653,17 @@ async def stop_harvey():
 
     pid = _check_harvey_pid()
     if not pid:
-        return {"success": False, "message": "Harvey is not running."}
+        return {"success": False, "message": "O Harvey não está rodando."}
+
+    unit = _agent_unit()
+    if unit:
+        ok, err = _systemctl("stop", unit)
+        if not ok:
+            return {"success": False, "message": f"systemctl stop {unit} falhou: {err}"}
+        _harvey_process = None
+        _harvey_started_at = None
+        PID_FILE.unlink(missing_ok=True)
+        return {"success": True, "unit": unit}
 
     try:
         os.kill(pid, signal.SIGTERM)
@@ -1474,7 +1577,7 @@ REPLY_STATUSES = ("replied", "meeting", "closed")
 def _eta_text(minutes) -> str:
     if minutes is None:
         return ""
-    return "less than a minute left" if minutes < 1 else f"about {round(minutes)} min left"
+    return "falta menos de um minuto" if minutes < 1 else f"faltam uns {round(minutes)} min"
 
 
 @app.get("/api/live-status")
@@ -1578,48 +1681,48 @@ async def get_live_status():
                 "state": state_, "detail": detail}
 
     profile_eta = next((r["eta_min"] for r in running if r["stage"] == "profile"), None)
-    read_detail = f"{profiled} of {with_site} read"
+    read_detail = f"{profiled} de {with_site} lidos"
     if reading and profile_eta is not None:
         read_detail += " · " + _eta_text(profile_eta)
     if no_site:
-        read_detail += f" · {no_site} have no website (skipped)"
+        read_detail += f" · {no_site} sem site (pulados)"
 
     steps = [
-        step("Find businesses", companies, 0, finding,
-             f"{companies} businesses found", info=True),
-        step("Read their websites", profiled, with_site, reading, read_detail),
-        step("Find emails", checked, profiled, finding_emails,
-             f"{checked} of {profiled} checked · {len(with_email)} emails found"),
-        step("Check emails are real", len(with_email) - unconfirmed, len(with_email), False,
-             f"{by_status.get('verified', 0)} verified · {by_status.get('risky', 0)} risky · "
-             f"{unconfirmed} not confirmed"
-             + (f" · {by_status['invalid']} bad" if by_status.get("invalid") else "")),
-        step("Write first emails", len(drafted), len(deliverable | drafted), False,
-             f"{len(drafted)} written · see Campaigns"),
-        step("Sent", len(sent & drafted), len(drafted), False,
-             f"{len(sent & drafted)} of {len(drafted)} sent"),
-        step("Replies", replies, 0, False,
-             f"{replies} replies" if replies else "No replies yet", info=True),
+        step("Encontrar empresas", companies, 0, finding,
+             f"{companies} empresas encontradas", info=True),
+        step("Ler os sites", profiled, with_site, reading, read_detail),
+        step("Encontrar e-mails", checked, profiled, finding_emails,
+             f"{checked} de {profiled} verificadas · {len(with_email)} e-mails encontrados"),
+        step("Confirmar que os e-mails existem", len(with_email) - unconfirmed, len(with_email), False,
+             f"{by_status.get('verified', 0)} verificados · {by_status.get('risky', 0)} catch-all · "
+             f"{unconfirmed} não confirmados"
+             + (f" · {by_status['invalid']} inválidos" if by_status.get("invalid") else "")),
+        step("Escrever os primeiros e-mails", len(drafted), len(deliverable | drafted), False,
+             f"{len(drafted)} escritos · veja Campanhas"),
+        step("Enviados", len(sent & drafted), len(drafted), False,
+             f"{len(sent & drafted)} de {len(drafted)} enviados"),
+        step("Respostas", replies, 0, False,
+             f"{replies} respostas" if replies else "Nenhuma resposta ainda", info=True),
     ]
 
     if reading or finding:
-        next_up = "Wait — Harvey is working. This page updates by itself."
+        next_up = "Aguarde: o Harvey está trabalhando. Esta página atualiza sozinha."
     elif finding_emails:
-        next_up = "Wait — emails are being found."
+        next_up = "Aguarde: os e-mails estão sendo encontrados."
     elif stopped:
-        next_up = "A job stopped before finishing. Run it again."
+        next_up = "Uma tarefa parou antes de terminar. Rode de novo."
     elif harvey_sends and awaiting_review:
-        next_up = f"Review the {awaiting_review} draft(s) waiting in the Outbox."
+        next_up = f"Revise os {awaiting_review} rascunho(s) esperando na Caixa de saída."
     elif by_hand:
-        next_up = f"Open Campaigns and send the {len(by_hand)} unsent email(s)."
+        next_up = f"Abra Campanhas e envie os {len(by_hand)} e-mail(s) pendentes."
     elif profiled > checked:
-        next_up = f"Find emails for the {profiled - checked} businesses not checked yet."
+        next_up = f"Encontre e-mails pras {profiled - checked} empresas ainda não verificadas."
     elif deliverable - drafted:
-        next_up = f"Write first emails for {len(deliverable - drafted)} more contact(s)."
+        next_up = f"Escreva os primeiros e-mails pra mais {len(deliverable - drafted)} contato(s)."
     elif not companies:
-        next_up = "Search for businesses to get started."
+        next_up = "Comece buscando empresas na aba Descobrir."
     else:
-        next_up = "Search more cities or industries to get more leads."
+        next_up = "Busque mais cidades ou setores pra ter mais leads."
 
     return {
         "steps": steps,
@@ -1678,9 +1781,9 @@ async def get_today():
         if paused:
             items.append({
                 "key": "paused", "tone": "bad",
-                "title": "Sending is paused",
-                "detail": str(paused) + ". Nothing will go out until you resume it.",
-                "action": "Review and resume", "tab": "outbox",
+                "title": "Os envios estão pausados",
+                "detail": str(paused) + ". Nada sai até você retomar.",
+                "action": "Revisar e retomar", "tab": "outbox",
             })
 
         setup = await get_setup_status()
@@ -1689,65 +1792,65 @@ async def get_today():
                        if c.get("required") and not c.get("done")]
             items.append({
                 "key": "setup", "tone": "warn",
-                "title": "Finish setting Harvey up",
-                "detail": ", ".join(missing[:3]) or "Some required steps are incomplete.",
-                "action": "Open setup", "tab": "settings",
+                "title": "Termine de configurar o Harvey",
+                "detail": ", ".join(missing[:3]) or "Faltam passos obrigatórios.",
+                "action": "Abrir configuração", "tab": "brain",
             })
 
         if proposed:
             items.append({
                 "key": "signals", "tone": "warn",
-                "title": (f"{len(proposed)} signal waiting for your confirmation"
+                "title": (f"{len(proposed)} sinal esperando sua confirmação"
                           if len(proposed) == 1
-                          else f"{len(proposed)} signals waiting for your confirmation"),
-                "detail": ("Harvey won't collect anything you haven't approved. "
-                           "Confirm which signals define a good prospect for you."),
-                "action": "Review signals", "tab": "signals",
+                          else f"{len(proposed)} sinais esperando sua confirmação"),
+                "detail": ("O Harvey não coleta nada que você não aprovou. "
+                           "Confirme quais sinais definem um bom prospect pra você."),
+                "action": "Revisar sinais", "tab": "signals",
             })
         elif not confirmed:
             items.append({
                 "key": "signals-none", "tone": "warn",
-                "title": "No signals confirmed",
-                "detail": "Every signal is rejected, so prospecting has nothing to collect.",
-                "action": "Review signals", "tab": "signals",
+                "title": "Nenhum sinal confirmado",
+                "detail": "Todos os sinais estão rejeitados, então a prospecção não tem o que coletar.",
+                "action": "Revisar sinais", "tab": "signals",
             })
 
         if not n_companies and confirmed:
             items.append({
                 "key": "discover", "tone": "good",
-                "title": "No companies yet",
-                "detail": ("Signals are confirmed but nothing has been collected. "
-                           "Discovery is free to try — no account needed."),
-                "action": "Find businesses", "tab": "discover",
+                "title": "Nenhuma empresa ainda",
+                "detail": ("Os sinais estão confirmados mas nada foi coletado. "
+                           "Descobrir é grátis pra testar — não precisa de conta."),
+                "action": "Encontrar empresas", "tab": "discover",
             })
 
         unprofiled = unprofiled_count
         if unprofiled:
             items.append({
                 "key": "profile", "tone": "good",
-                "title": f"{unprofiled} companies not looked at yet",
-                "detail": ("Reading their websites is free and it is what makes "
-                           "an email specific — who their agency is, what they "
-                           "are missing, whether they are spending on ads."),
-                "action": "Read their sites", "tab": "discover",
+                "title": f"{unprofiled} empresas ainda não analisadas",
+                "detail": ("Ler o site delas é grátis e é o que deixa um e-mail "
+                           "específico — quem é a agência, o que falta no site, "
+                           "se estão gastando com anúncios."),
+                "action": "Ler os sites", "tab": "discover",
             })
 
         if pending:
             items.append({
                 "key": "outbox", "tone": "warn",
-                "title": (f"{len(pending)} email waiting for approval" if len(pending) == 1
-                          else f"{len(pending)} emails waiting for approval"),
-                "detail": "Nothing sends until you approve it. Read them one at a time.",
-                "action": "Open the decisions desk", "tab": "outbox",
+                "title": (f"{len(pending)} e-mail esperando aprovação" if len(pending) == 1
+                          else f"{len(pending)} e-mails esperando aprovação"),
+                "detail": "Nada é enviado até você aprovar. Leia um de cada vez.",
+                "action": "Abrir a caixa de saída", "tab": "outbox",
             })
 
         if open_convos:
             items.append({
                 "key": "replies", "tone": "good",
-                "title": (f"{open_convos} live conversation" if open_convos == 1
-                          else f"{open_convos} live conversations"),
-                "detail": "People replied. Check how Harvey is handling them.",
-                "action": "Read conversations", "tab": "conversations",
+                "title": (f"{open_convos} conversa em andamento" if open_convos == 1
+                          else f"{open_convos} conversas em andamento"),
+                "detail": "Tem gente respondendo. Veja como o Harvey está lidando.",
+                "action": "Ler conversas", "tab": "conversations",
             })
 
         return {"items": items, "stats": stats}
@@ -2056,6 +2159,12 @@ def dashboard_url(host: str = "127.0.0.1", port: int = 5555) -> str:
     except ValueError:
         pass
     return f"http://{name}:{port}/#token={token_store.get()}"
+
+
+# Browser-only administration (AI sign-in, mailbox OAuth, config form,
+# training, branding, Cloudflare Access guard). See harvey/webadmin.py.
+from harvey import webadmin as _webadmin  # noqa: E402
+_webadmin.install(app)
 
 
 def start_dashboard(host: str = "127.0.0.1", port: int = 5555):

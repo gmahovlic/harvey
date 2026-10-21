@@ -368,16 +368,16 @@ def compliance_notice(config) -> str:
     compliance = compliance_of(config)
     missing = []
     if not compliance.postal_address.strip():
-        missing.append("a postal address (compliance.postal_address: a street "
-                       "address, PO box or virtual mailbox)")
+        missing.append("endereço postal (compliance.postal_address: rua, caixa "
+                       "postal ou escritório virtual)")
     if not compliance.opt_out_line.strip():
-        missing.append("a way to opt out (compliance.opt_out_line)")
+        missing.append("frase de descadastro (compliance.opt_out_line)")
     if not missing:
         return ""
     return (
-        "Cold emails are going out without " + " or ".join(missing) + ". US law "
-        "(CAN-SPAM) requires both in every cold email. Set them in harvey.yaml "
-        "(or harvey.local.yaml if you trained Harvey)."
+        "Os e-mails frios estão saindo sem " + " nem ".join(missing) + ". A lei "
+        "americana (CAN-SPAM) exige os dois em todo e-mail frio. Preencha em "
+        "Configurações → Conformidade."
     )
 
 

@@ -445,10 +445,10 @@ vm.runInThisContext("const _cohort = {require: new Set(['A']), exclude: new Set(
     assert len(data['links']) == 1
     assert data['links'][0]['clicked'] and data['links'][0]['removed']
     assert data['revoked'] == ['blob:local']
-    assert data['success'] == {'disabled': False, 'textContent': 'Export CSV'}
-    assert data['failure'] == {'disabled': False, 'textContent': 'Export failed — retry'}
+    assert data['success'] == {'disabled': False, 'textContent': 'Exportar CSV'}
+    assert data['failure'] == {'disabled': False, 'textContent': 'Falha ao exportar — tentar de novo'}
     assert data['refused'] == data['failure']
-    assert len(data['locks']) == 1 and 'saved token was not accepted' in data['locks'][0]
+    assert len(data['locks']) == 1 and 'token salvo não foi aceito' in data['locks'][0]
 
 
 def test_cohort_csv_invalid_codes_are_client_error(client):
@@ -499,7 +499,7 @@ const page = (name, offset) => ({size: 100, offset, companies: [{name}]});
                               capture_output=True, check=True)
     data = json.loads(response.stdout)
     assert data['offsets'] == [0, 50, 50]
-    assert 'Loading cohort' in data['loading'] and 'Export CSV' not in data['loading']
+    assert 'Carregando o segmento' in data['loading'] and 'Exportar CSV' not in data['loading']
     assert 'LATEST' in data['latest'] and 'STALE' not in data['latest']
     assert data['afterOld'] == data['latest']
     assert data['cleared'] == data['afterClear'] == ''

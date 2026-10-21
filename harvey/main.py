@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import signal
 import sys
 from datetime import datetime, time, timedelta
@@ -458,15 +459,42 @@ def main():
     """Entry point."""
     # Check for first-time setup
     if _needs_setup():
+        if not sys.stdin.isatty():
+            # Started by the dashboard or systemd: there is nobody to answer
+            # the wizard's questions. Say what's missing and stop cleanly so
+            # the dashboard shows "parado" instead of a hung process.
+            logger.error(
+                "Harvey ainda não está configurado: faltam o .env ou o produto "
+                "(persona/product) no harvey.local.yaml. Abra o painel e complete "
+                "as abas IA, E-mail, Treinar e Configurações."
+            )
+            sys.exit(2)
         print("\n  First time running Harvey? Let's get you set up.\n")
         from harvey.setup import run_setup
         asyncio.run(run_setup())
         return
 
+    # Record our PID so the dashboard can see a loop started by systemd
+    # (or by hand) exactly as one it launched itself, and stop it the same
+    # way. Removed on exit; a stale file is ignored by the dashboard.
+    from harvey.paths import PROJECT_ROOT
+    pid_file = PROJECT_ROOT / "data" / "harvey.pid"
+    try:
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        pid_file.write_text(str(os.getpid()), encoding="utf-8")
+    except OSError as e:
+        logger.warning(f"Could not write PID file: {e}")
+
     try:
         asyncio.run(_run_with_signals())
     except KeyboardInterrupt:
         logger.info("Goodbye.")
+    finally:
+        try:
+            if pid_file.is_file() and pid_file.read_text(encoding="utf-8").strip() == str(os.getpid()):
+                pid_file.unlink()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
