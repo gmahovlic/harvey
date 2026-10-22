@@ -390,14 +390,14 @@ class DataForSEOListings(DiscoveryProvider):
     key = "dataforseo_listings"
     label = "DataForSEO Business Listings"
     kind = "listings"
-    blurb = ("Enumerate every business of a type within a radius, with phone, "
-             "domain, rating and whether the listing is claimed. Best choice "
-             "for local trades, clinics and contractors.")
-    cost_note = "$0.372 per 1,000 businesses ($0.012/query + $0.00036 each)"
-    free_tier = "$1 signup credit; $50 minimum deposit to go live"
+    blurb = ("Lista todo negócio de um tipo num raio, com telefone, site, nota e "
+             "se a ficha foi reivindicada. A melhor opção pra comércio local, "
+             "clínicas e prestadores de serviço.")
+    cost_note = "US$ 0,372 por 1.000 empresas (US$ 0,012 por consulta + US$ 0,00036 cada)"
+    free_tier = "US$ 1 de crédito no cadastro; depósito mínimo de US$ 50 pra usar de verdade"
     signup_url = "https://app.dataforseo.com/api-access"
     env_keys = ("dataforseo_login", "dataforseo_password")
-    caveat = "No email addresses — Harvey resolves those in a later stage."
+    caveat = "Não traz e-mails: o Harvey descobre os endereços numa etapa seguinte."
 
     TASK_COST = 0.012
     ITEM_COST = 0.00036
@@ -477,15 +477,15 @@ class DataForSEOSerp(DiscoveryProvider):
     key = "dataforseo_serp"
     label = "DataForSEO SERP (organic rank)"
     kind = "serp"
-    blurb = ("Search '<service> <city>' and record where each business ranks. "
-             "Discovers businesses you didn't have AND scores the ones you did.")
-    cost_note = "$0.0006 per 10 results — depth 30 costs $0.0018 a search"
-    free_tier = "$1 signup credit; free sandbox; $50 minimum deposit to go live"
+    blurb = ("Busca '<serviço> <cidade>' no Google e registra a posição de cada "
+             "empresa. Descobre empresas novas E pontua as que você já tinha.")
+    cost_note = "US$ 0,0006 a cada 10 resultados; profundidade 30 custa US$ 0,0018 por busca"
+    free_tier = "US$ 1 de crédito no cadastro; sandbox grátis; depósito mínimo de US$ 50 pra usar de verdade"
     signup_url = "https://app.dataforseo.com/api-access"
     env_keys = ("dataforseo_login", "dataforseo_password")
-    caveat = ("Google removed 100-results-per-page in September 2025, so depth "
-              "100 now costs 10x depth 10. Depth 20-30 is the sweet spot; "
-              "below rank 30 it is mostly directories anyway.")
+    caveat = ("O Google acabou com as 100 posições por página em setembro de 2025, "
+              "então profundidade 100 custa 10x a 10. O ponto ideal é 20 a 30; "
+              "abaixo da posição 30 é quase só diretório.")
 
     PAGE_COST = 0.0006
 
@@ -541,13 +541,13 @@ class Serper(DiscoveryProvider):
     key = "serper"
     label = "Serper"
     kind = "serp"
-    blurb = ("Fast Google search with rank positions. The easiest one to try: "
-             "2,500 free queries, no credit card, one API key.")
-    cost_note = "~$0.30-$1.00 per 1,000 searches depending on plan"
-    free_tier = "2,500 queries free, no card required"
+    blurb = ("Busca rápida no Google com posições. A mais fácil de testar: "
+             "2.500 buscas grátis, sem cartão, uma chave só.")
+    cost_note = "~US$ 0,30 a 1,00 por 1.000 buscas, conforme o plano"
+    free_tier = "2.500 buscas grátis, sem cartão"
     signup_url = "https://serper.dev"
     env_keys = ("serper_api_key",)
-    caveat = "Paid plans start at a $50 prepaid pack; credits expire after 6 months."
+    caveat = "Os planos pagos começam num pacote pré-pago de US$ 50; os créditos vencem em 6 meses."
 
     def estimate(self, queries):
         # One credit per 10 results on the standard plan.
@@ -593,16 +593,16 @@ class OpenStreetMap(DiscoveryProvider):
     key = "osm"
     label = "OpenStreetMap (Overpass)"
     kind = "listings"
-    blurb = ("Free public map data. No signup, no key, no card. Try the whole "
-             "pipeline for nothing before you pay anyone.")
-    cost_note = "free"
-    free_tier = "unlimited, within community rate etiquette"
+    blurb = ("Dados públicos de mapa. Sem cadastro, sem chave, sem cartão. Teste "
+             "o fluxo inteiro de graça antes de pagar qualquer um.")
+    cost_note = "grátis"
+    free_tier = "ilimitado, respeitando o ritmo da comunidade"
     signup_url = "https://www.openstreetmap.org"
     env_keys = ()
-    caveat = ("Coverage is thin for any trade without a storefront — OSM maps "
-              "premises, so it holds under 2,000 roofers for the entire US. "
-              "Great for a free trial run or as a cross-reference; not a "
-              "complete list.")
+    caveat = ("Cobertura fraca pra negócio sem endereço físico: o OSM mapeia "
+              "estabelecimentos, então tem pouquíssimos prestadores sem loja. "
+              "Ótimo pra um teste grátis ou como referência cruzada; não é uma "
+              "lista completa.")
 
     # Several public Overpass instances run the same API. The main one
     # throttles readily, so try the mirrors before giving up — a free source
