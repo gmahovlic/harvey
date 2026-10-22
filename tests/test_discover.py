@@ -631,7 +631,7 @@ async def test_osm_refuses_a_term_it_cannot_map_instead_of_guessing():
     with every registered office in Denver. Returning nothing is correct;
     returning plausible junk is not."""
     provider = D.OpenStreetMap()
-    with pytest.raises(RuntimeError, match="no category"):
+    with pytest.raises(RuntimeError, match="não tem categoria"):
         async with _client(lambda r: httpx.Response(200, json={})) as client:
             await provider.fetch(client, {}, D.DiscoveryQuery(
                 term="storm damage restoration", coordinate="39.7,-104.9,40"))

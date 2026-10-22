@@ -627,6 +627,50 @@ class OpenStreetMap(DiscoveryProvider):
         "attorney": ['office=lawyer'],
         "contractor": ['craft=builder', 'office=construction_company'],
         "landscap": ['craft=gardener', 'shop=garden_centre'],
+        # Portuguese (pt-BR) trades, with and without accents since the ICP
+        # text is matched as a plain substring.
+        "advoc": ['office=lawyer'],
+        "advogad": ['office=lawyer'],
+        "contab": ['office=accountant'],
+        "auditor": ['office=accountant'],
+        "clínic": ['amenity=clinic', 'amenity=doctors'],
+        "clinic": ['amenity=clinic', 'amenity=doctors'],
+        "consultór": ['amenity=doctors'],
+        "consultorio": ['amenity=doctors'],
+        "consultor": ['office=consulting'],
+        "odonto": ['amenity=dentist'],
+        "construtor": ['office=construction_company', 'craft=builder'],
+        "incorporador": ['office=construction_company'],
+        "engenharia": ['office=engineer'],
+        "arquitet": ['office=architect'],
+        "concession": ['shop=car'],
+        "distribuidor": ['shop=wholesale'],
+        "atacad": ['shop=wholesale'],
+        "indústria": ['man_made=works'],
+        "industria": ['man_made=works'],
+        "fábrica": ['man_made=works'],
+        "fabrica": ['man_made=works'],
+        "imobili": ['office=estate_agent'],
+        "seguro": ['office=insurance'],
+        "agência": ['office=advertising_agency'],
+        "agencia": ['office=advertising_agency'],
+        "academia": ['leisure=fitness_centre'],
+        "restaurante": ['amenity=restaurant'],
+        "hotel": ['tourism=hotel'],
+        "pousada": ['tourism=guest_house'],
+        "farmác": ['amenity=pharmacy'],
+        "farmac": ['amenity=pharmacy'],
+        "veterin": ['amenity=veterinary'],
+        "pet shop": ['shop=pet'],
+        "escola": ['amenity=school'],
+        "oficina": ['shop=car_repair'],
+        "mecânic": ['shop=car_repair'],
+        "mecanic": ['shop=car_repair'],
+        "salão": ['shop=hairdresser'],
+        "salao": ['shop=hairdresser'],
+        "barbear": ['shop=hairdresser'],
+        "estética": ['shop=beauty'],
+        "estetica": ['shop=beauty'],
     }
 
     def _tags(self, term: str) -> list[str]:
@@ -653,9 +697,10 @@ class OpenStreetMap(DiscoveryProvider):
         tags = self._tags(query.term)
         if not tags:
             raise RuntimeError(
-                f"OpenStreetMap has no category for {query.term!r}. It can only "
-                f"search mapped trades ({', '.join(sorted(self.TAG_MAP))}). Use a "
-                f"listings or SERP provider for this one.")
+                f"O OpenStreetMap não tem categoria para {query.term!r}. Ele só "
+                f"busca tipos de negócio mapeados (ex.: advocacia, contabilidade, "
+                f"clínica, construtora, concessionária, imobiliária, restaurante). "
+                f"Para esse setor, use uma fonte de listagens ou de busca (DataForSEO, Serper).")
         lat, lng, radius_km = (query.coordinate.split(",") + ["", "", ""])[:3]
         radius_m = int(float(radius_km or 25) * 1000)
         clauses = "".join(
